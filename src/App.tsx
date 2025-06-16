@@ -305,6 +305,9 @@ const App: React.FC = () => {
         visualizationGroup.selectAll('.hex-label').remove();
       })
       .on('click', (event, d) => {
+        // Prevent event from bubbling up to zoom behavior
+        event.stopPropagation();
+        
         // Find the node with the most suspicious processes in this bin
         const nodeWithMostIssues = d.reduce((max, node) => {
           const currentIssues = node.properties.processes.filter(p => p.status !== 'OK').length;
@@ -339,6 +342,10 @@ const App: React.FC = () => {
     // Add zoom behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.5, 4])
+      .filter((event) => {
+        // Only allow wheel events for zooming, disable double-click zoom
+        return event.type === 'wheel';
+      })
       .on('zoom', (event) => {
         const visualizationGroup = svg.select('.visualization-group');
         visualizationGroup.attr('transform', event.transform);
@@ -499,7 +506,7 @@ const App: React.FC = () => {
       .selectAll('g')
       .data(color.domain())
       .join('g')
-      .attr('transform', (d, i) => `translate(12,${12 + (i * 12)})`);
+      .attr('transform', (d, i) => `translate(12,${12 + (i * 16)})`);
 
     legend.append('rect')
       .attr('x', 0)
@@ -517,6 +524,10 @@ const App: React.FC = () => {
     // Add zoom behavior (mouse wheel only)
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.5, 4])
+      .filter((event) => {
+        // Only allow wheel events for zooming, disable double-click zoom
+        return event.type === 'wheel';
+      })
       .on('zoom', (event) => {
         visualizationGroup.attr('transform', event.transform);
       });
