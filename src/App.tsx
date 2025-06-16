@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import * as d3Hexbin from 'd3-hexbin';
 import 'remixicon/fonts/remixicon.css';
-import './App.css';
+import './app.css';
 import Timeline from './components/Timeline';
 
 interface Process {
@@ -80,6 +80,30 @@ const App: React.FC = () => {
     if (!currentDate) return [];
     return nodes.filter(d => d.date === currentDate);
   }, [nodes, currentDate]);
+
+  // Get all suspicious nodes for navigation
+  const suspiciousNodes = useMemo(() => {
+    return filteredData.filter(node => node.hasAnomaly);
+  }, [filteredData]);
+
+  // Get current suspicious node index
+  const currentSuspiciousIndex = useMemo(() => {
+    if (!selectedNode || !selectedNode.hasAnomaly) return -1;
+    return suspiciousNodes.findIndex(node => node.id === selectedNode.id);
+  }, [selectedNode, suspiciousNodes]);
+
+  // Navigation functions
+  const navigateToNextSuspicious = () => {
+    if (suspiciousNodes.length === 0) return;
+    const nextIndex = (currentSuspiciousIndex + 1) % suspiciousNodes.length;
+    setSelectedNode(suspiciousNodes[nextIndex]);
+  };
+
+  const navigateToPrevSuspicious = () => {
+    if (suspiciousNodes.length === 0) return;
+    const prevIndex = currentSuspiciousIndex <= 0 ? suspiciousNodes.length - 1 : currentSuspiciousIndex - 1;
+    setSelectedNode(suspiciousNodes[prevIndex]);
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -385,205 +409,230 @@ const App: React.FC = () => {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // Clear previous content
-    d3.select(container).selectAll('*').remove();
-
-    const width = container.clientWidth;
-    const height = 400;
-    const padding = 40;
-    const graphWidth = width - (padding * 2);
-    const graphHeight = height - (padding * 2);
-
-    const svg = d3.select(container)
-      .append('svg')
-      .attr('width', width)
-      .attr('height', height)
-      .attr('viewBox', [0, 0, width, height])
-      .attr('preserveAspectRatio', 'xMidYMid meet')
-      .attr('style', 'max-width: 100%; height: auto; background: white; border-radius: 4px;');
-
-    // Create a group for the visualization that will be transformed
-    const visualizationGroup = svg.append('g')
-      .attr('class', 'visualization-group');
-
-    // Add arrow marker definition
-    visualizationGroup.append('defs').append('marker')
-      .attr('id', 'arrowhead')
-      .attr('viewBox', '-0 -5 10 10')
-      .attr('refX', 15)
-      .attr('refY', 0)
-      .attr('orient', 'auto')
-      .attr('markerWidth', 4)
-      .attr('markerHeight', 4)
-      .attr('xoverflow', 'visible')
-      .append('svg:path')
-      .attr('d', 'M 0,-5 L 10 ,0 L 0,5')
-      .attr('fill', '#999')
-      .style('stroke', 'none');
-
-    // Generate sample nodes for the process
-    const nodeCount = Math.floor(Math.random() * 6) + 15; // 15-20 nodes
-    const graphNodes = Array.from({ length: nodeCount }, (_, i) => ({
-      id: `node-${i}`,
-      name: `Component ${i}`,
-      status: Math.random() > 0.8 ? 'Error' : Math.random() > 0.6 ? 'Warning' : 'OK',
-      group: ['Core', 'Network', 'Storage', 'Security', 'Monitoring'][Math.floor(Math.random() * 5)]
-    }));
-
-    // Generate random connections
-    const links = [];
-    for (let i = 0; i < graphNodes.length; i++) {
-      const connectionCount = Math.floor(Math.random() * 3) + 1; // 1-3 connections per node
-      for (let j = 0; j < connectionCount; j++) {
-        const targetIndex = Math.floor(Math.random() * graphNodes.length);
-        if (targetIndex !== i) {
-          links.push({
-            source: graphNodes[i].id,
-            target: graphNodes[targetIndex].id,
-            value: Math.random() * 3 + 1
-          });
-        }
-      }
+    // Fade out existing content
+    const existingContent = d3.select(container).selectAll('*');
+    if (!existingContent.empty()) {
+      existingContent
+        .transition()
+        .duration(200)
+        .style('opacity', 0)
+        .on('end', () => {
+          // Clear previous content after fade out
+          d3.select(container).selectAll('*').remove();
+          // Render new content
+          renderNewGraph();
+        });
+    } else {
+      // No existing content, render immediately
+      renderNewGraph();
     }
 
-    // Create a color scale for groups
-    const color = d3.scaleOrdinal(d3.schemeTableau10);
+    function renderNewGraph() {
+      if (!container) return;
+      
+      const width = container.clientWidth;
+      const height = 400;
+      const padding = 40;
+      const graphWidth = width - (padding * 2);
+      const graphHeight = height - (padding * 2);
 
-    // Create the force simulation
-    const simulation = d3.forceSimulation(graphNodes)
-      .force('link', d3.forceLink(links).id(d => d.id).distance(40))
-      .force('charge', d3.forceManyBody().strength(-100))
-      .force('center', d3.forceCenter(width / 2, height / 2).strength(0.1))
-      .force('x', d3.forceX(width / 2).strength(0.1))
-      .force('y', d3.forceY(height / 2).strength(0.1))
-      .force('collision', d3.forceCollide().radius(10))
-      .force('boundary', () => {
-        return alpha => {
-          graphNodes.forEach(node => {
-            node.x = Math.max(padding + 10, Math.min(graphWidth + padding - 10, node.x));
-            node.y = Math.max(padding + 10, Math.min(graphHeight + padding - 10, node.y));
-          });
-        };
+      const svg = d3.select(container)
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('viewBox', [0, 0, width, height])
+        .attr('preserveAspectRatio', 'xMidYMid meet')
+        .attr('style', 'max-width: 100%; height: auto; background: white; border-radius: 4px;')
+        .style('opacity', 0); // Start with opacity 0
+
+      // Create a group for the visualization that will be transformed
+      const visualizationGroup = svg.append('g')
+        .attr('class', 'visualization-group');
+
+      // Add arrow marker definition
+      visualizationGroup.append('defs').append('marker')
+        .attr('id', 'arrowhead')
+        .attr('viewBox', '-0 -5 10 10')
+        .attr('refX', 15)
+        .attr('refY', 0)
+        .attr('orient', 'auto')
+        .attr('markerWidth', 4)
+        .attr('markerHeight', 4)
+        .attr('xoverflow', 'visible')
+        .append('svg:path')
+        .attr('d', 'M 0,-5 L 10 ,0 L 0,5')
+        .attr('fill', '#999')
+        .style('stroke', 'none');
+
+      // Generate sample nodes for the process
+      const nodeCount = Math.floor(Math.random() * 6) + 15; // 15-20 nodes
+      const graphNodes = Array.from({ length: nodeCount }, (_, i) => ({
+        id: `node-${i}`,
+        name: `Component ${i}`,
+        status: Math.random() > 0.8 ? 'Error' : Math.random() > 0.6 ? 'Warning' : 'OK',
+        group: ['Core', 'Network', 'Storage', 'Security', 'Monitoring'][Math.floor(Math.random() * 5)]
+      }));
+
+      // Generate random connections
+      const links = [];
+      for (let i = 0; i < graphNodes.length; i++) {
+        const connectionCount = Math.floor(Math.random() * 3) + 1; // 1-3 connections per node
+        for (let j = 0; j < connectionCount; j++) {
+          const targetIndex = Math.floor(Math.random() * graphNodes.length);
+          if (targetIndex !== i) {
+            links.push({
+              source: graphNodes[i].id,
+              target: graphNodes[targetIndex].id,
+              value: Math.random() * 3 + 1
+            });
+          }
+        }
+      }
+
+      // Create a color scale for groups
+      const color = d3.scaleOrdinal(d3.schemeTableau10);
+
+      // Create the force simulation
+      const simulation = d3.forceSimulation(graphNodes)
+        .force('link', d3.forceLink(links).id(d => d.id).distance(40))
+        .force('charge', d3.forceManyBody().strength(-100))
+        .force('center', d3.forceCenter(width / 2, height / 2).strength(0.1))
+        .force('x', d3.forceX(width / 2).strength(0.1))
+        .force('y', d3.forceY(height / 2).strength(0.1))
+        .force('collision', d3.forceCollide().radius(10))
+        .force('boundary', () => {
+          return alpha => {
+            graphNodes.forEach(node => {
+              node.x = Math.max(padding + 10, Math.min(graphWidth + padding - 10, node.x));
+              node.y = Math.max(padding + 10, Math.min(graphHeight + padding - 10, node.y));
+            });
+          };
+        });
+
+      // Create the links
+      const link = visualizationGroup.append('g')
+        .attr('stroke', '#999')
+        .attr('stroke-opacity', 0.4)
+        .selectAll('line')
+        .data(links)
+        .join('line')
+        .attr('stroke-width', d => Math.sqrt(d.value) * 0.5)
+        .attr('marker-end', 'url(#arrowhead)');
+
+      // Create the nodes
+      const node = visualizationGroup.append('g')
+        .selectAll('circle')
+        .data(graphNodes)
+        .join('circle')
+        .attr('r', 3)
+        .attr('fill', d => d.status === 'OK' ? '#2e7d32' : d.status === 'Warning' ? '#ffa000' : '#d32f2f')
+        .attr('stroke', d => color(d.group))
+        .attr('stroke-width', 1)
+        .call(drag(simulation));
+
+      // Add labels
+      const label = visualizationGroup.append('g')
+        .selectAll('text')
+        .data(graphNodes)
+        .join('text')
+        .text(d => d.name.split(' ')[1])
+        .attr('font-size', '6px')
+        .attr('fill', '#333')
+        .attr('text-anchor', 'middle')
+        .attr('dy', -5);
+
+      // Add a legend for groups (outside the visualization group)
+      const legend = svg.append('g')
+        .attr('class', 'legend')
+        .attr('font-size', 10)
+        .attr('text-anchor', 'start')
+        .selectAll('g')
+        .data(color.domain())
+        .join('g')
+        .attr('transform', (d, i) => `translate(12,${12 + (i * 16)})`);
+
+      legend.append('rect')
+        .attr('x', 0)
+        .attr('y', -4)
+        .attr('width', 8)
+        .attr('height', 8)
+        .attr('fill', color);
+
+      legend.append('text')
+        .attr('x', 12)
+        .attr('y', 1)
+        .attr('dominant-baseline', 'middle')
+        .text(d => d);
+
+      // Add zoom behavior (mouse wheel only)
+      const zoom = d3.zoom<SVGSVGElement, unknown>()
+        .scaleExtent([0.5, 4])
+        .filter((event) => {
+          // Only allow wheel events for zooming, disable double-click zoom
+          return event.type === 'wheel';
+        })
+        .on('zoom', (event) => {
+          visualizationGroup.attr('transform', event.transform);
+        });
+
+      svg.call(zoom);
+
+      // Set initial zoom level to 2x and center the view
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const initialTransform = d3.zoomIdentity
+        .translate(centerX, centerY)
+        .scale(2)
+        .translate(-centerX, -centerY);
+      
+      svg.call(zoom.transform, initialTransform);
+
+      // Update positions on simulation tick
+      simulation.on('tick', () => {
+        link
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y);
+
+        node
+          .attr('cx', d => d.x)
+          .attr('cy', d => d.y);
+
+        label
+          .attr('x', d => d.x)
+          .attr('y', d => d.y);
       });
 
-    // Create the links
-    const link = visualizationGroup.append('g')
-      .attr('stroke', '#999')
-      .attr('stroke-opacity', 0.4)
-      .selectAll('line')
-      .data(links)
-      .join('line')
-      .attr('stroke-width', d => Math.sqrt(d.value) * 0.5)
-      .attr('marker-end', 'url(#arrowhead)');
+      // Fade in the new content
+      svg.transition()
+        .duration(300)
+        .style('opacity', 1);
 
-    // Create the nodes
-    const node = visualizationGroup.append('g')
-      .selectAll('circle')
-      .data(graphNodes)
-      .join('circle')
-      .attr('r', 3)
-      .attr('fill', d => d.status === 'OK' ? '#2e7d32' : d.status === 'Warning' ? '#ffa000' : '#d32f2f')
-      .attr('stroke', d => color(d.group))
-      .attr('stroke-width', 1)
-      .call(drag(simulation));
+      // Drag functions
+      function drag(simulation) {
+        function dragstarted(event) {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          event.subject.fx = event.subject.x;
+          event.subject.fy = event.subject.y;
+        }
 
-    // Add labels
-    const label = visualizationGroup.append('g')
-      .selectAll('text')
-      .data(graphNodes)
-      .join('text')
-      .text(d => d.name.split(' ')[1])
-      .attr('font-size', '6px')
-      .attr('fill', '#333')
-      .attr('text-anchor', 'middle')
-      .attr('dy', -5);
+        function dragged(event) {
+          event.subject.fx = event.x;
+          event.subject.fy = event.y;
+        }
 
-    // Add a legend for groups (outside the visualization group)
-    const legend = svg.append('g')
-      .attr('class', 'legend')
-      .attr('font-size', 10)
-      .attr('text-anchor', 'start')
-      .selectAll('g')
-      .data(color.domain())
-      .join('g')
-      .attr('transform', (d, i) => `translate(12,${12 + (i * 16)})`);
+        function dragended(event) {
+          if (!event.active) simulation.alphaTarget(0);
+          event.subject.fx = null;
+          event.subject.fy = null;
+        }
 
-    legend.append('rect')
-      .attr('x', 0)
-      .attr('y', -4)
-      .attr('width', 8)
-      .attr('height', 8)
-      .attr('fill', color);
-
-    legend.append('text')
-      .attr('x', 12)
-      .attr('y', 1)
-      .attr('dominant-baseline', 'middle')
-      .text(d => d);
-
-    // Add zoom behavior (mouse wheel only)
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.5, 4])
-      .filter((event) => {
-        // Only allow wheel events for zooming, disable double-click zoom
-        return event.type === 'wheel';
-      })
-      .on('zoom', (event) => {
-        visualizationGroup.attr('transform', event.transform);
-      });
-
-    svg.call(zoom);
-
-    // Set initial zoom level to 2x and center the view
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const initialTransform = d3.zoomIdentity
-      .translate(centerX, centerY)
-      .scale(2)
-      .translate(-centerX, -centerY);
-    
-    svg.call(zoom.transform, initialTransform);
-
-    // Update positions on simulation tick
-    simulation.on('tick', () => {
-      link
-        .attr('x1', d => d.source.x)
-        .attr('y1', d => d.source.y)
-        .attr('x2', d => d.target.x)
-        .attr('y2', d => d.target.y);
-
-      node
-        .attr('cx', d => d.x)
-        .attr('cy', d => d.y);
-
-      label
-        .attr('x', d => d.x)
-        .attr('y', d => d.y);
-    });
-
-    // Drag functions
-    function drag(simulation) {
-      function dragstarted(event) {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
-        event.subject.fx = event.subject.x;
-        event.subject.fy = event.subject.y;
+        return d3.drag()
+          .on('start', dragstarted)
+          .on('drag', dragged)
+          .on('end', dragended);
       }
-
-      function dragged(event) {
-        event.subject.fx = event.x;
-        event.subject.fy = event.y;
-      }
-
-      function dragended(event) {
-        if (!event.active) simulation.alphaTarget(0);
-        event.subject.fx = null;
-        event.subject.fy = null;
-      }
-
-      return d3.drag()
-        .on('start', dragstarted)
-        .on('drag', dragged)
-        .on('end', dragended);
     }
   };
 
@@ -635,10 +684,35 @@ const App: React.FC = () => {
           {selectedNode.hasAnomaly ? (
             <>
               <div className="process-summary suspicious">
-                <p>Total Processes: {selectedNode.properties.processes.length}</p>
-                <p>Suspicious Processes: <span>{
-                  selectedNode.properties.processes.filter(p => p.status !== 'OK').length
-                }</span></p>
+                <div className="summary-header">
+                  <div className="summary-info">
+                    <p>Total Processes: {selectedNode.properties.processes.length}</p>
+                    <p>Suspicious Processes: <span>{
+                      selectedNode.properties.processes.filter(p => p.status !== 'OK').length
+                    }</span></p>
+                  </div>
+                  {suspiciousNodes.length > 1 && (
+                    <div className="navigation-controls">
+                      <button 
+                        className="nav-button"
+                        onClick={navigateToPrevSuspicious}
+                        title="Previous suspicious asset"
+                      >
+                        <i className="ri-arrow-left-line"></i>
+                      </button>
+                      <span className="nav-indicator">
+                        {currentSuspiciousIndex + 1} of {suspiciousNodes.length}
+                      </span>
+                      <button 
+                        className="nav-button"
+                        onClick={navigateToNextSuspicious}
+                        title="Next suspicious asset"
+                      >
+                        <i className="ri-arrow-right-line"></i>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               <h3>Suspicious Processes:</h3>
               <ul className="process-list">

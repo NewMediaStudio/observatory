@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* Global Base Styles (from index.css) */
 * {
   margin: 0;
   padding: 0;
@@ -7,6 +8,23 @@
   font-family: 'Inter', sans-serif;
 }
 
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #000;
+  color: #fff;
+  overflow: hidden;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+/* App Component Styles (taking priority) */
 .app {
   position: relative;
   width: 100vw;
@@ -112,11 +130,11 @@
 }
 
 .node-details p {
-  margin-bottom: 10px;
+  margin-bottom: 0;
   font-weight: 400;
   color: #000;
   font-size: 14px;
-  line-height: 1.2;
+  line-height: 1.6;
 }
 
 .node-details h3 {
@@ -130,7 +148,7 @@
 .process-summary {
   margin: 15px 0;
   padding: 10px;
-  padding-bottom: 2px;
+  padding-bottom: 10px;
   background: rgba(46, 125, 50, 0.1);
   border-radius: 4px;
   color: #000;
@@ -140,6 +158,7 @@
 
 .process-summary.suspicious {
   background: rgba(211, 47, 47, 0.1);
+  border-left: 4px solid #d32f2f;
 }
 
 .process-list {
@@ -186,7 +205,6 @@
   padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
-  margin-top: 15px;
   font-weight: 400;
 }
 
@@ -262,22 +280,7 @@
   background-color: rgba(0, 0, 0, 0.3);
 }
 
-.process-summary.suspicious p:last-child {
-  color: #d32f2f;
-  font-weight: 700;
-}
-
 .process-summary.suspicious p:nth-child(2) {
-  color: #d32f2f;
-  font-weight: 700;
-}
-
-.process-summary.suspicious p:contains("Suspicious Processes:") {
-  color: #d32f2f;
-  font-weight: 700;
-}
-
-.process-summary.suspicious p:contains("Suspicious Processes:") span {
   color: #d32f2f;
   font-weight: 700;
 }
@@ -471,4 +474,55 @@
 .legend rect {
   stroke: #ccc;
   stroke-width: 0.5;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.summary-info {
+  flex: 1;
+}
+
+.navigation-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.nav-button {
+  background: transparent;
+  border: 1px solid #d32f2f;
+  color: #d32f2f;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.nav-button:hover {
+  background: rgba(211, 47, 47, 0.1);
+  transform: translateY(-1px);
+}
+
+.nav-button:active {
+  transform: translateY(0);
+}
+
+.nav-indicator {
+  font-size: 12px;
+  color: #d32f2f;
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: center;
 } 
