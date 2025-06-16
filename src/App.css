@@ -8,14 +8,15 @@
 }
 
 .app {
+  position: relative;
   width: 100vw;
   height: 100vh;
+  overflow: hidden;
+  padding-bottom: 100px;
   display: flex;
   justify-content: center;
   align-items: center;
   background-color: #fff;
-  position: relative;
-  overflow: hidden;
 }
 
 .app::after {
@@ -288,7 +289,7 @@
 
 .total-count {
   position: fixed;
-  bottom: 20px;
+  bottom: 120px;
   right: 20px;
   background: rgba(0, 0, 0, 0.8);
   color: white;
@@ -296,7 +297,7 @@
   border-radius: 5px;
   font-size: 14px;
   font-weight: 400;
-  z-index: 1000;
+  z-index: 1001;
   line-height: 1.5;
 }
 

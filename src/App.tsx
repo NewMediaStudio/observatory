@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import * as d3Hexbin from 'd3-hexbin';
 import 'remixicon/fonts/remixicon.css';
 import './App.css';
+import Timeline from './components/Timeline';
 
 interface Process {
   id: string;
@@ -44,6 +45,7 @@ interface Node {
     status: string;
     processes: Process[];
   };
+  date: string;
 }
 
 const App: React.FC = () => {
@@ -52,6 +54,31 @@ const App: React.FC = () => {
   const [expandedProcess, setExpandedProcess] = useState<string | null>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [currentDate, setCurrentDate] = useState<string>('');
+
+  // Generate dates for the last 30 days
+  const dates = useMemo(() => {
+    const dates: string[] = [];
+    for (let i = 30; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+    return dates;
+  }, []);
+
+  // Set initial date
+  useEffect(() => {
+    if (dates.length > 0 && !currentDate) {
+      setCurrentDate(dates[dates.length - 1]);
+    }
+  }, [dates, currentDate]);
+
+  // Filter data based on current date
+  const filteredData = useMemo(() => {
+    if (!currentDate) return [];
+    return nodes.filter(d => d.date === currentDate);
+  }, [nodes, currentDate]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -77,138 +104,94 @@ const App: React.FC = () => {
         'Monitoring': { count: 50, anomalyRate: 0.1 }
       };
 
-      // Generate nodes for each group
-      Object.entries(groups).forEach(([tag, config]) => {
-        // Create subclusters for better distribution
-        const subclusterCount = Math.ceil(config.count / 15);
-        const subclusters = Array.from({ length: subclusterCount }, () => ({
-          centerX: Math.random() * (dimensions.width * 0.6) + (dimensions.width * 0.2),
-          centerY: Math.random() * (dimensions.height * 0.6) + (dimensions.height * 0.2),
-          radius: Math.min(dimensions.width, dimensions.height) * 0.15
-        }));
-
-        // First pass: create all processes for this group
-        const groupProcesses: Process[] = [];
-        let currentProcessIndex = 0;
+      // Generate nodes for each date
+      dates.forEach(date => {
+        // Calculate total nodes for this date (between 1410 and 1455)
+        const totalNodesForDate = Math.floor(Math.random() * (1455 - 1410 + 1)) + 1410;
         
-        // Track node positions to avoid overlap
-        const nodePositions: { x: number; y: number; hasAnomaly: boolean }[] = [];
-        const allNodes: { x: number; y: number; hasAnomaly: boolean; fx?: number; fy?: number }[] = [];
-        
-        for (let i = 0; i < config.count; i++) {
-          // Pure random number between 1 and 100
-          const processCount = Math.floor(Math.random() * 100) + 1;
-          
-          // Create processes for this specific node
-          const nodeProcesses: Process[] = [];
-          const hasAnomaly = Math.random() < config.anomalyRate;
-          
-          // For nodes with anomalies, ensure only 1-9 suspicious processes
-          const problematicProcessCount = hasAnomaly ? Math.floor(Math.random() * 9) + 1 : 0; // 1-9 suspicious processes
-          
-          // First create the problematic processes for anomalous nodes
-          for (let j = 0; j < problematicProcessCount; j++) {
-            // For anomalous nodes, create suspicious processes
-            const status = j % 2 === 0 ? 'Error' : 'Warning';
-            const group = ['Core', 'Network', 'Storage', 'Security', 'Monitoring'][Math.floor(Math.random() * 5)];
-            const weight = Math.floor(Math.random() * 3) + 1;
-            
-            const process = {
-              id: `proc-${tag}-${i}-${j}`,
-              name: `${group} Process ${j}`,
-              status,
-              group,
-              connections: [],
-              weight
-            };
-            
-            nodeProcesses.push(process);
-            groupProcesses.push(process);
-          }
-          
-          // Then create the remaining processes (all OK)
-          for (let j = problematicProcessCount; j < processCount; j++) {
-            const status = 'OK'; // All remaining processes are OK
-            const group = ['Core', 'Network', 'Storage', 'Security', 'Monitoring'][Math.floor(Math.random() * 5)];
-            const weight = Math.floor(Math.random() * 3) + 1;
-            
-            const process = {
-              id: `proc-${tag}-${i}-${j}`,
-              name: `${group} Process ${j}`,
-              status,
-              group,
-              connections: [],
-              weight
-            };
-            
-            nodeProcesses.push(process);
-            groupProcesses.push(process);
-          }
+        // Calculate scaling factor to achieve desired total
+        const currentTotal = Object.values(groups).reduce((sum, g) => sum + g.count, 0);
+        const scaleFactor = totalNodesForDate / currentTotal;
 
-          // Create nodes with their processes
-          const subcluster = subclusters[i % subclusterCount];
-          const baseAngle = (i / (config.count / subclusterCount)) * Math.PI * 2;
-          const angleVariation = (Math.random() - 0.5) * 0.2;
-          const angle = baseAngle + angleVariation;
+        // Generate nodes for each group
+        Object.entries(groups).forEach(([tag, config]) => {
+          // Scale the count for this group
+          const scaledCount = Math.round(config.count * scaleFactor);
           
-          // Adjust distance based on whether node has anomaly
-          const minDistance = subcluster.radius * (hasAnomaly ? 0.5 : 0.4);
-          const maxDistance = subcluster.radius * (hasAnomaly ? 0.8 : 0.9);
-          const distance = minDistance + Math.random() * (maxDistance - minDistance);
-          
-          let x = subcluster.centerX + Math.cos(angle) * distance;
-          let y = subcluster.centerY + Math.sin(angle) * distance;
+          // Create subclusters for better distribution
+          const subclusterCount = Math.ceil(scaledCount / 15);
+          const subclusters = Array.from({ length: subclusterCount }, () => ({
+            centerX: Math.random() * (dimensions.width * 0.6) + (dimensions.width * 0.2),
+            centerY: Math.random() * (dimensions.height * 0.6) + (dimensions.height * 0.2),
+            radius: Math.min(dimensions.width, dimensions.height) * 0.15
+          }));
 
-          allNodes.push({ x, y, hasAnomaly });
-          nodePositions.push({ x, y, hasAnomaly });
+          // Generate nodes for this group
+          for (let i = 0; i < scaledCount; i++) {
+            const hasAnomaly = Math.random() < config.anomalyRate;
+            const subcluster = subclusters[i % subclusterCount];
+            const baseAngle = (i / (scaledCount / subclusterCount)) * Math.PI * 2;
+            const angleVariation = (Math.random() - 0.5) * 0.2;
+            const angle = baseAngle + angleVariation;
+            
+            const minDistance = subcluster.radius * (hasAnomaly ? 0.5 : 0.4);
+            const maxDistance = subcluster.radius * (hasAnomaly ? 0.8 : 0.9);
+            const distance = minDistance + Math.random() * (maxDistance - minDistance);
+            
+            let x = subcluster.centerX + Math.cos(angle) * distance;
+            let y = subcluster.centerY + Math.sin(angle) * distance;
 
-          nodes.push({
-            id: `${tag}-${i}`,
-            x,
-            y,
-            radius: 5,
-            hasAnomaly,
-            tag,
-            properties: {
-              name: `${tag} Asset ${i}`,
-              type: ['Server', 'Database', 'Service'][Math.floor(Math.random() * 3)],
-              status: hasAnomaly ? 'Warning' : 'Active',
-              processes: nodeProcesses
+            // Create processes for this node
+            const processCount = Math.floor(Math.random() * 100) + 1;
+            const nodeProcesses: Process[] = [];
+            const problematicProcessCount = hasAnomaly ? Math.floor(Math.random() * 9) + 1 : 0;
+
+            // Create problematic processes
+            for (let j = 0; j < problematicProcessCount; j++) {
+              const status = j % 2 === 0 ? 'Error' : 'Warning';
+              const group = ['Core', 'Network', 'Storage', 'Security', 'Monitoring'][Math.floor(Math.random() * 5)];
+              const weight = Math.floor(Math.random() * 3) + 1;
+              
+              nodeProcesses.push({
+                id: `proc-${tag}-${i}-${j}`,
+                name: `${group} Process ${j}`,
+                status,
+                group,
+                connections: [],
+                weight
+              });
             }
-          });
-        }
 
-        // Apply force simulation to all nodes
-        if (allNodes.length > 0) {
-          const simulation = d3.forceSimulation(allNodes)
-            .force('collision', d3.forceCollide().radius(d => d.hasAnomaly ? 60 : 25).strength(1.5))
-            .force('center', d3.forceCenter(dimensions.width / 2, dimensions.height / 2).strength(0.05))
-            .force('x', d3.forceX(dimensions.width / 2).strength(0.05))
-            .force('y', d3.forceY(dimensions.height / 2).strength(0.05))
-            .stop();
-
-          // Run the simulation for more iterations to ensure stable positioning
-          for (let i = 0; i < 800; ++i) simulation.tick();
-
-          // Update node positions
-          allNodes.forEach((node, i) => {
-            const nodeIndex = nodes.findIndex(n => n.hasAnomaly === node.hasAnomaly && n.x === node.x && n.y === node.y);
-            if (nodeIndex !== -1) {
-              // Ensure nodes stay within bounds
-              const minDistance = node.hasAnomaly ? 60 : 25;
-              nodes[nodeIndex].x = Math.max(minDistance, Math.min(dimensions.width - minDistance, node.x));
-              nodes[nodeIndex].y = Math.max(minDistance, Math.min(dimensions.height - minDistance, node.y));
+            // Create normal processes
+            for (let j = problematicProcessCount; j < processCount; j++) {
+              const group = ['Core', 'Network', 'Storage', 'Security', 'Monitoring'][Math.floor(Math.random() * 5)];
+              const weight = Math.floor(Math.random() * 3) + 1;
+              
+              nodeProcesses.push({
+                id: `proc-${tag}-${i}-${j}`,
+                name: `${group} Process ${j}`,
+                status: 'OK',
+                group,
+                connections: [],
+                weight
+              });
             }
-          });
-        }
 
-        // Second pass: create connections between processes
-        groupProcesses.forEach((process, index) => {
-          // Connect to 2-4 other processes in the same group
-          const numConnections = Math.floor(Math.random() * 3) + 2;
-          for (let k = 0; k < numConnections; k++) {
-            const targetIndex = (index + k + 1) % groupProcesses.length;
-            process.connections.push(groupProcesses[targetIndex].id);
+            nodes.push({
+              id: `${tag}-${date}-${i}`,
+              x,
+              y,
+              radius: 5,
+              hasAnomaly,
+              tag,
+              properties: {
+                name: `${tag} Asset ${i}`,
+                type: ['Server', 'Database', 'Service'][Math.floor(Math.random() * 3)],
+                status: hasAnomaly ? 'Warning' : 'Active',
+                processes: nodeProcesses
+              },
+              date: date
+            });
           }
         });
       });
@@ -217,7 +200,7 @@ const App: React.FC = () => {
     };
 
     setNodes(generateNodes());
-  }, [dimensions]);
+  }, [dimensions, dates]);
 
   useEffect(() => {
     if (!svgRef.current || nodes.length === 0) return;
@@ -236,7 +219,7 @@ const App: React.FC = () => {
       .extent([[0, 0], [width, height]]);
 
     // Group nodes by their hexbin
-    const bins = hexbin(nodes);
+    const bins = hexbin(filteredData);
 
     // Create color scale for intensity
     const colorScale = d3.scaleLinear<number>()
@@ -336,7 +319,7 @@ const App: React.FC = () => {
       .attr('font-size', '12px')
       .text(d => d.length);
 
-  }, [nodes, dimensions]);
+  }, [filteredData, dimensions]);
 
   // Add effect to expand first suspicious process when node is selected
   useEffect(() => {
@@ -552,7 +535,7 @@ const App: React.FC = () => {
       />
       <div className="total-count">
         <i className="ri-server-line" style={{ color: 'white', marginRight: '8px', fontSize: '16px', verticalAlign: 'middle' }}></i>
-        {nodes.length.toLocaleString()} assets
+        {filteredData.length.toLocaleString()} assets
       </div>
       {selectedNode && (
         <div className={`node-details ${selectedNode.hasAnomaly ? 'anomaly' : ''}`}>
@@ -653,6 +636,11 @@ const App: React.FC = () => {
           )}
         </div>
       )}
+      <Timeline
+        dates={dates}
+        currentDate={currentDate}
+        onDateChange={setCurrentDate}
+      />
     </div>
   );
 };
