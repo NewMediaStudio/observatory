@@ -55,6 +55,7 @@ const App: React.FC = () => {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [currentDate, setCurrentDate] = useState<string>('');
+  const [zoomTransform, setZoomTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
 
   // Generate dates for the last 30 days
   const dates = useMemo(() => {
@@ -202,14 +203,20 @@ const App: React.FC = () => {
     setNodes(generateNodes());
   }, [dimensions, dates]);
 
+  // Update hexbin visualization with zoom transform
   useEffect(() => {
     if (!svgRef.current || nodes.length === 0) return;
 
     const svg = d3.select(svgRef.current);
     const { width, height } = dimensions;
 
-    // Clear previous elements
-    svg.selectAll('*').remove();
+    // Clear previous visualization elements
+    svg.select('.visualization-layer').selectAll('*').remove();
+
+    // Create a group for the visualization that will be transformed
+    const visualizationGroup = svg.select('.visualization-layer')
+      .append('g')
+      .attr('class', 'visualization-group');
 
     // Create hexbin generator
     const hexbin = d3Hexbin.hexbin<Node>()
@@ -227,7 +234,8 @@ const App: React.FC = () => {
       .range(['#e0e0e0', '#d32f2f', '#b71c1c', '#7f0000']);
 
     // Draw hexbins
-    const hexGroup = svg.append('g')
+    const hexGroup = visualizationGroup.append('g')
+      .attr('class', 'hexbin-group')
       .selectAll<SVGPathElement, d3Hexbin.HexbinBin<Node>>('path')
       .data(bins)
       .enter()
@@ -270,7 +278,7 @@ const App: React.FC = () => {
           
           const suspiciousCount = nodeWithMostIssues.properties.processes.filter(p => p.status !== 'OK').length;
           
-          svg.append('text')
+          visualizationGroup.append('text')
             .attr('class', 'hex-label')
             .attr('x', d.x)
             .attr('y', d.y)
@@ -294,7 +302,7 @@ const App: React.FC = () => {
           });
 
         // Remove text label
-        svg.selectAll('.hex-label').remove();
+        visualizationGroup.selectAll('.hex-label').remove();
       })
       .on('click', (event, d) => {
         // Find the node with the most suspicious processes in this bin
@@ -321,6 +329,38 @@ const App: React.FC = () => {
 
   }, [filteredData, dimensions]);
 
+  // Add zoom behavior
+  useEffect(() => {
+    if (!svgRef.current) return;
+
+    const svg = d3.select(svgRef.current);
+    const { width, height } = dimensions;
+    
+    // Add zoom behavior
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.5, 4])
+      .on('zoom', (event) => {
+        const visualizationGroup = svg.select('.visualization-group');
+        visualizationGroup.attr('transform', event.transform);
+      });
+
+    svg.call(zoom);
+
+    // Set initial zoom level to 2x and center the view
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const initialTransform = d3.zoomIdentity
+      .translate(centerX, centerY)
+      .scale(2)
+      .translate(-centerX, -centerY);
+    
+    svg.call(zoom.transform, initialTransform);
+
+    return () => {
+      svg.on('.zoom', null);
+    };
+  }, [dimensions]);
+
   // Add effect to expand first suspicious process when node is selected
   useEffect(() => {
     if (selectedNode?.hasAnomaly) {
@@ -341,9 +381,9 @@ const App: React.FC = () => {
     // Clear previous content
     d3.select(container).selectAll('*').remove();
 
-    const width = 400;
-    const height = 200;
-    const padding = 40; // Increased padding from 20 to 40
+    const width = container.clientWidth;
+    const height = 400;
+    const padding = 40;
     const graphWidth = width - (padding * 2);
     const graphHeight = height - (padding * 2);
 
@@ -352,10 +392,15 @@ const App: React.FC = () => {
       .attr('width', width)
       .attr('height', height)
       .attr('viewBox', [0, 0, width, height])
+      .attr('preserveAspectRatio', 'xMidYMid meet')
       .attr('style', 'max-width: 100%; height: auto; background: white; border-radius: 4px;');
 
+    // Create a group for the visualization that will be transformed
+    const visualizationGroup = svg.append('g')
+      .attr('class', 'visualization-group');
+
     // Add arrow marker definition
-    svg.append('defs').append('marker')
+    visualizationGroup.append('defs').append('marker')
       .attr('id', 'arrowhead')
       .attr('viewBox', '-0 -5 10 10')
       .attr('refX', 15)
@@ -399,16 +444,15 @@ const App: React.FC = () => {
 
     // Create the force simulation
     const simulation = d3.forceSimulation(graphNodes)
-      .force('link', d3.forceLink(links).id(d => d.id).distance(40))  // Reduced from 50 to 40
-      .force('charge', d3.forceManyBody().strength(-100))  // Reduced from -150 to -100
-      .force('center', d3.forceCenter(width / 2, height / 2).strength(0.1))  // Increased from 0.05 to 0.1
-      .force('x', d3.forceX(width / 2).strength(0.1))  // Increased from 0.05 to 0.1
-      .force('y', d3.forceY(height / 2).strength(0.1))  // Increased from 0.05 to 0.1
-      .force('collision', d3.forceCollide().radius(10))  // Reduced from 12 to 10
+      .force('link', d3.forceLink(links).id(d => d.id).distance(40))
+      .force('charge', d3.forceManyBody().strength(-100))
+      .force('center', d3.forceCenter(width / 2, height / 2).strength(0.1))
+      .force('x', d3.forceX(width / 2).strength(0.1))
+      .force('y', d3.forceY(height / 2).strength(0.1))
+      .force('collision', d3.forceCollide().radius(10))
       .force('boundary', () => {
         return alpha => {
           graphNodes.forEach(node => {
-            // Keep nodes within the padded area with more strict boundaries
             node.x = Math.max(padding + 10, Math.min(graphWidth + padding - 10, node.x));
             node.y = Math.max(padding + 10, Math.min(graphHeight + padding - 10, node.y));
           });
@@ -416,17 +460,17 @@ const App: React.FC = () => {
       });
 
     // Create the links
-    const link = svg.append('g')
+    const link = visualizationGroup.append('g')
       .attr('stroke', '#999')
-      .attr('stroke-opacity', 0.4)  // Reduced opacity from 0.6 to 0.4
+      .attr('stroke-opacity', 0.4)
       .selectAll('line')
       .data(links)
       .join('line')
-      .attr('stroke-width', d => Math.sqrt(d.value) * 0.5)  // Reduced thickness by half
-      .attr('marker-end', 'url(#arrowhead)');  // Add arrow marker
+      .attr('stroke-width', d => Math.sqrt(d.value) * 0.5)
+      .attr('marker-end', 'url(#arrowhead)');
 
     // Create the nodes
-    const node = svg.append('g')
+    const node = visualizationGroup.append('g')
       .selectAll('circle')
       .data(graphNodes)
       .join('circle')
@@ -437,7 +481,7 @@ const App: React.FC = () => {
       .call(drag(simulation));
 
     // Add labels
-    const label = svg.append('g')
+    const label = visualizationGroup.append('g')
       .selectAll('text')
       .data(graphNodes)
       .join('text')
@@ -447,27 +491,47 @@ const App: React.FC = () => {
       .attr('text-anchor', 'middle')
       .attr('dy', -5);
 
-    // Add a legend for groups
+    // Add a legend for groups (outside the visualization group)
     const legend = svg.append('g')
-      .attr('font-size', 6)
+      .attr('class', 'legend')
+      .attr('font-size', 10)
       .attr('text-anchor', 'start')
       .selectAll('g')
       .data(color.domain())
       .join('g')
-      .attr('transform', (d, i) => `translate(12,${12 + (i * 8)})`);
+      .attr('transform', (d, i) => `translate(12,${12 + (i * 12)})`);
 
     legend.append('rect')
       .attr('x', 0)
-      .attr('y', -2.5)  // Center the rect vertically
-      .attr('width', 5)
-      .attr('height', 5)
+      .attr('y', -4)
+      .attr('width', 8)
+      .attr('height', 8)
       .attr('fill', color);
 
     legend.append('text')
-      .attr('x', 7)
-      .attr('y', 1)  // Adjust text baseline to align with rect center
-      .attr('dominant-baseline', 'middle')  // Center text vertically
+      .attr('x', 12)
+      .attr('y', 1)
+      .attr('dominant-baseline', 'middle')
       .text(d => d);
+
+    // Add zoom behavior (mouse wheel only)
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.5, 4])
+      .on('zoom', (event) => {
+        visualizationGroup.attr('transform', event.transform);
+      });
+
+    svg.call(zoom);
+
+    // Set initial zoom level to 2x and center the view
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const initialTransform = d3.zoomIdentity
+      .translate(centerX, centerY)
+      .scale(2)
+      .translate(-centerX, -centerY);
+    
+    svg.call(zoom.transform, initialTransform);
 
     // Update positions on simulation tick
     simulation.on('tick', () => {
@@ -531,8 +595,13 @@ const App: React.FC = () => {
         ref={svgRef}
         width={dimensions.width}
         height={dimensions.height}
+        viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
+        preserveAspectRatio="xMidYMid meet"
         style={{ background: 'white' }}
-      />
+      >
+        <g className="visualization-layer" />
+        <g className="controls-layer" />
+      </svg>
       <div className="total-count">
         <i className="ri-server-line" style={{ color: 'white', marginRight: '8px', fontSize: '16px', verticalAlign: 'middle' }}></i>
         {filteredData.length.toLocaleString()} assets
